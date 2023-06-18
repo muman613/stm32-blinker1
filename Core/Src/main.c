@@ -133,7 +133,7 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   // Start timer
-  HAL_TIM_Base_Start_IT(&htim2);
+//  HAL_TIM_Base_Start_IT(&htim2);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -256,9 +256,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 799;
+  htim2.Init.Prescaler = 7999;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 65535;
+  htim2.Init.Period = 20000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -361,8 +361,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if(GPIO_Pin == B1_Pin) // If The INT Source Is EXTI Line9 (A9 Pin)
 	{
-
-		if (button_info.button_pressed == true) {
+		if ((button_info.button_pressed == true) && ((B1_GPIO_Port->IDR & B1_Pin) == B1_Pin)) {
 			uint32_t button_tick = HAL_GetTick();
 
 			button_info.button_pressed = false;
@@ -374,7 +373,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 					.button_event_ts = button_tick,
 			};
 			osMessageQueuePut(eventQueueHandle, &event, 0, 0);
-		} else {
+
+			HAL_TIM_Base_Stop_IT(&htim2);
+			htim2.Instance->CNT = 0;
+		} else if ((button_info.button_pressed == false) && ((B1_GPIO_Port->IDR & B1_Pin) == 0)) {
 			uint32_t button_tick = HAL_GetTick();
 
 			button_info.button_pressed = true;
@@ -388,7 +390,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			osMessageQueuePut(eventQueueHandle, &event, 0, 0);
 
 			// Start long press timer
-			HAL_TIM_OnePulse_Start_IT(&htim2, 0);
+//			htim2.Instance->CNT = 0;
+			__HAL_TIM_CLEAR_FLAG(&htim2, TIM_SR_UIF);
+			HAL_TIM_Base_Start_IT(&htim2);
 		}
 
 //		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin); // Toggle The Output (LED) Pin
@@ -405,6 +409,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /* USER CODE END Header_startButtonTask */
 void startButtonTask(void *argument)
 {
+	bool ledState = false;
+
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
   for(;;)
@@ -415,9 +421,20 @@ void startButtonTask(void *argument)
 		  switch (button_event.button_event_msg) {
 		  case BUTTON_PRESSED:
 			  printf("Button pressed!\n");
+			  if (!ledState) {
+				  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 1);
+				  ledState = true;
+			  }
 			  break;
 		  case BUTTON_RELEASED:
 			  printf("Button released!\n");
+			  break;
+		  case BUTTON_LONGPRESSED:
+			  printf("Button long-pressed!\n");
+			  if (ledState) {
+				  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 0);
+				  ledState = false;
+			  }
 			  break;
 		  default:
 			  break;
@@ -440,16 +457,10 @@ void startButtonTask(void *argument)
 void uartTimerCb(void *argument)
 {
   /* USER CODE BEGIN uartTimerCb */
-	printf("Button pressed = %d, press started = %ld, press ended = %ld to = %d\n",
-			button_info.button_pressed, button_info.button_press_started,
+	uint16_t timer_val = __HAL_TIM_GET_COUNTER(&htim2);
+	printf("tim2 count = %d Button pressed = %d, press started = %ld, press ended = %ld to = %d\n",
+			timer_val, button_info.button_pressed, button_info.button_press_started,
 			button_info.button_press_ended, button_info.button_timeout);
-
-	   // Get current time (microseconds)
-	  uint16_t timer_val = __HAL_TIM_GET_COUNTER(&htim2);
-	  printf("timer_val = %d\n", timer_val);
-//	static char buffer[128];
-//	snprintf(buffer, 128, "button_pressed = %d\n", button_pressed);
-//	HAL_UART_Transmit(&huart2, (uint8_t *)buffer, strlen(buffer), 1000);
   /* USER CODE END uartTimerCb */
 }
 
@@ -464,7 +475,7 @@ void uartTimerCb(void *argument)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
-	static uint32_t count = 1;
+//	static uint32_t count = 1;
 
   /* USER CODE END Callback 0 */
   if (htim->Instance == TIM1) {
@@ -472,10 +483,20 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   }
   /* USER CODE BEGIN Callback 1 */
   if (htim == &htim2) {
-	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	  if (button_info.button_pressed) {
-		  button_info.button_timeout++;
-	  }
+//	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+	if (button_info.button_pressed) {
+		// Send message
+		sButtonEvent event = {
+				.button_event_msg = BUTTON_LONGPRESSED,
+				.button_pin = B1_Pin,
+				.button_event_ts = HAL_GetTick(),
+		};
+
+		button_info.button_timeout++;
+		HAL_TIM_Base_Stop_IT(&htim2);
+
+		osMessageQueuePut(eventQueueHandle, &event, 0, 0);
+	}
 
 //	  if (count >= 10) {
 //		  HAL_TIM_Base_Stop_IT(&htim2);
