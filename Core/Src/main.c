@@ -47,6 +47,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 
@@ -79,6 +80,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
 void startButtonTask(void *argument);
 void uartTimerCb(void *argument);
 
@@ -131,6 +133,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_TIM2_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   // Start timer
 //  HAL_TIM_Base_Start_IT(&htim2);
@@ -283,6 +286,51 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 7999;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 20000;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -374,8 +422,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			};
 			osMessageQueuePut(eventQueueHandle, &event, 0, 0);
 
-			HAL_TIM_Base_Stop_IT(&htim2);
-			htim2.Instance->CNT = 0;
+			HAL_TIM_Base_Stop_IT(&htim3);
+			htim3.Instance->CNT = 0;
 		} else if ((button_info.button_pressed == false) && ((B1_GPIO_Port->IDR & B1_Pin) == 0)) {
 			uint32_t button_tick = HAL_GetTick();
 
@@ -391,8 +439,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 			// Start long press timer
 //			htim2.Instance->CNT = 0;
-			__HAL_TIM_CLEAR_FLAG(&htim2, TIM_SR_UIF);
-			HAL_TIM_Base_Start_IT(&htim2);
+			__HAL_TIM_CLEAR_FLAG(&htim3, TIM_SR_UIF);
+			HAL_TIM_Base_Start_IT(&htim3);
 		}
 
 //		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin); // Toggle The Output (LED) Pin
@@ -409,10 +457,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /* USER CODE END Header_startButtonTask */
 void startButtonTask(void *argument)
 {
-	bool ledState = false;
-
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
+	bool ledState =false;
   for(;;)
   {
 	  sButtonEvent button_event = {};
@@ -442,13 +489,6 @@ void startButtonTask(void *argument)
 	  } else {
 		  printf("ERROR: Unable to get a message from message queue");
 	  }
-//	if (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 0) {
-//		button_pressed = true;
-//	} else {
-//		button_pressed = false;
-//	}
-//
-//    osDelay(1);
   }
   /* USER CODE END 5 */
 }
@@ -457,7 +497,7 @@ void startButtonTask(void *argument)
 void uartTimerCb(void *argument)
 {
   /* USER CODE BEGIN uartTimerCb */
-	uint16_t timer_val = __HAL_TIM_GET_COUNTER(&htim2);
+	uint16_t timer_val = __HAL_TIM_GET_COUNTER(&htim3);
 	printf("tim2 count = %d Button pressed = %d, press started = %ld, press ended = %ld to = %d\n",
 			timer_val, button_info.button_pressed, button_info.button_press_started,
 			button_info.button_press_ended, button_info.button_timeout);
@@ -475,15 +515,13 @@ void uartTimerCb(void *argument)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
-//	static uint32_t count = 1;
 
   /* USER CODE END Callback 0 */
   if (htim->Instance == TIM1) {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-  if (htim == &htim2) {
-//	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  if (htim == &htim3) {
 	if (button_info.button_pressed) {
 		// Send message
 		sButtonEvent event = {
@@ -493,16 +531,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		};
 
 		button_info.button_timeout++;
-		HAL_TIM_Base_Stop_IT(&htim2);
+		HAL_TIM_Base_Stop_IT(&htim3);
 
 		osMessageQueuePut(eventQueueHandle, &event, 0, 0);
 	}
-
-//	  if (count >= 10) {
-//		  HAL_TIM_Base_Stop_IT(&htim2);
-//
-//	  }
-//	  count++;
   }
   /* USER CODE END Callback 1 */
 }
