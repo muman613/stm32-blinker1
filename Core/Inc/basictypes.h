@@ -8,8 +8,6 @@
 #ifndef INC_BASICTYPES_H_
 #define INC_BASICTYPES_H_
 
-#define bool uint8_t
-#define true 1
-#define false 0
+#include <stdbool.h>
 
 #endif /* INC_BASICTYPES_H_ */
