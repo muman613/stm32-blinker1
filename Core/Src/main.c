@@ -600,7 +600,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
   }
 
-  if (htim->Instance == htim4.Instance)
+  if (htim == &htim4)
   {
 	  htim2.Instance->CCR1 = ledDuty;
 	  ledDuty += inc;
